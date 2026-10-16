@@ -1,0 +1,17 @@
+[project]
+name = "personal-it-briefing"
+version = "0.1.0"
+description = "A bounded LangGraph news editor for a private UK/US/Korea morning email"
+requires-python = ">=3.11"
+dependencies = [
+  "langgraph>=1,<2", "langchain-openai>=1,<2", "langsmith>=0.4,<1",
+  "feedparser>=6,<7", "httpx>=0.28,<1", "beautifulsoup4>=4.13,<5",
+  "python-dotenv>=1,<2", "APScheduler>=3.11,<4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

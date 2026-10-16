@@ -1,0 +1,9 @@
+[
+  {"name":"BBC Technology","url":"https://feeds.bbci.co.uk/news/technology/rss.xml","language":"en","domains":["bbc.co.uk","bbc.com","bbci.co.uk"],"topic_feed":true},
+  {"name":"The Guardian Technology","url":"https://www.theguardian.com/technology/rss","language":"en","domains":["theguardian.com"],"topic_feed":true},
+  {"name":"CNBC Technology","url":"https://www.cnbc.com/id/19854910/device/rss/rss.html","language":"en","domains":["cnbc.com"],"topic_feed":true},
+  {"name":"NPR Technology","url":"https://feeds.npr.org/1019/rss.xml","language":"en","domains":["npr.org"],"topic_feed":true},
+  {"name":"연합뉴스 산업","url":"https://www.yna.co.kr/rss/industry.xml","language":"ko","domains":["yna.co.kr"],"topic_feed":false},
+  {"name":"한겨레 과학","url":"https://www.hani.co.kr/rss/science/","language":"ko","domains":["hani.co.kr"],"topic_feed":false},
+  {"name":"SBS 경제","url":"https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=02","language":"ko","domains":["sbs.co.kr"],"topic_feed":false}
+]

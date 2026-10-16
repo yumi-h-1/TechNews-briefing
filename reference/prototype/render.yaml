@@ -1,0 +1,40 @@
+# Paid worker + persistent disk. Review Render's displayed charges before creating.
+# Keep one instance; SQLite and the lock must stay on the SAME persistent disk.
+services:
+  - type: worker
+    name: yumi-it-briefing
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    numInstances: 1
+    disk:
+      name: briefing-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: OPENAI_MODEL
+        value: gpt-4.1-mini
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: LANGSMITH_TRACING
+        value: "true"
+      - key: LANGSMITH_API_KEY
+        sync: false
+      - key: LANGSMITH_PROJECT
+        value: yumi-it-briefing
+      - key: MAIL_TRANSPORT
+        value: resend
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        value: "Yumi IT Briefing <onboarding@resend.dev>"
+      - key: MAIL_TO
+        value: yumi.heo.01@gmail.com
+      - key: BRIEFING_TIMEZONE
+        value: Europe/London
+      - key: BRIEFING_HOUR
+        value: "8"
+      - key: BRIEFING_MINUTE
+        value: "0"
