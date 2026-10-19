@@ -47,15 +47,14 @@ Configured feeds include BBC, The Guardian, CNBC, NPR, Yonhap, Hankyoreh, and SB
 
 ## Getting started
 
-Run these commands from the repository root on macOS or Linux:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run these commands from the repository root on macOS or Linux:
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.lock
-python -m pip install --no-deps -e .
+uv sync --locked
 cp .env.example .env
 ```
+
+`.python-version` selects Python 3.13 for local development, matching the Docker image. `uv sync` creates the project’s `.venv` and installs the locked application and development dependencies. There is no need to activate the environment manually.
 
 If a `.env` file already exists, keep it and update its settings instead of overwriting it. Configure the following locally or through your hosting provider's secret settings:
 
@@ -77,26 +76,38 @@ Keep credentials out of version control. `.env` is excluded from Git and Docker 
 ### Commands
 
 ```sh
-python -m briefing doctor   # Check configuration without exposing key values
-python -m briefing collect  # Collect RSS candidates without AI or email
-python -m briefing demo     # Generate an offline preview with fictional stories
-python -m briefing preview  # Generate a real-news AI preview without sending
-python -m briefing prepare  # Generate and save today's edition without sending
-python -m briefing status   # Inspect today's delivery state
-python -m briefing serve    # Run daily preparation and scheduled delivery
+uv run --locked python -m briefing doctor   # Check configuration without exposing key values
+uv run --locked python -m briefing collect  # Collect RSS candidates without AI or email
+uv run --locked python -m briefing demo     # Generate an offline preview with fictional stories
+uv run --locked python -m briefing preview  # Generate a real-news AI preview without sending
+uv run --locked python -m briefing prepare  # Generate and save today's edition without sending
+uv run --locked python -m briefing status   # Inspect today's delivery state
+uv run --locked python -m briefing serve    # Run daily preparation and scheduled delivery
 ```
 
-`python -m briefing send` immediately submits an already prepared edition to the configured recipient; this manual command does not wait until 08:00.
+`uv run --locked python -m briefing send` immediately submits an already prepared edition to the configured recipient; this manual command does not wait until 08:00.
 
 Preview files are written under `DATA_DIR`: `demo/briefing.html` for fictional examples, `preview/briefing.html` for real-news previews, and `latest/briefing.html` for the prepared edition. Plain-text versions are also generated.
+
+## Dependency management
+
+`pyproject.toml` declares application dependencies and the `dev` dependency group. `uv.lock` records the resolved versions for reproducible installation and is committed to Git.
+
+```sh
+uv add package-name          # Add an application dependency
+uv add --dev package-name    # Add a development dependency
+uv lock --upgrade-package package-name  # Update a specific dependency
+```
+
+Commit both `pyproject.toml` and `uv.lock` when dependencies change. Normal setup and execution use `--locked` to detect an outdated lockfile. Docker installs only application dependencies with `uv sync --locked --no-dev`.
 
 ## Deployment and testing
 
 [`render.yaml`](render.yaml) defines a Docker worker with a persistent `/data` disk. Deployment requires service credentials, an authorized sender, and a paid hosting configuration. Keep one worker and preserve the database across restarts and deployments.
 
 ```sh
-python -m pip install -e '.[dev]'
-python -m pytest -q
+uv sync --locked
+uv run --locked pytest -q
 docker build -t technews-briefing:local .
 ```
 

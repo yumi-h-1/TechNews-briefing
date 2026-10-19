@@ -8,15 +8,15 @@
 
 ## 로컬 준비
 
-프로젝트 루트에서:
+[uv](https://docs.astral.sh/uv/getting-started/installation/)를 설치한 뒤 프로젝트 루트에서:
 
 ```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.lock
-.venv/bin/python -m pip install --no-deps -e .
-.venv/bin/python -m pytest -q
-.venv/bin/python -m briefing doctor
+uv sync --locked
+uv run --locked pytest -q
+uv run --locked python -m briefing doctor
 ```
+
+`uv sync --locked`가 `.venv`와 개발용 패키지까지 설치하므로 별도 가상환경 활성화는 필요 없다. 패키지 추가는 `uv add`, 개발용 패키지 추가는 `uv add --dev`로 처리한다. 의존성을 변경하면 `pyproject.toml`과 `uv.lock`을 함께 커밋한다. Docker는 `uv sync --locked --no-dev`로 운영용 패키지만 설치한다.
 
 `.env.example`을 `.env`로 복사한 뒤 자신의 편집기에서 OpenAI·LangSmith·Resend 키와 `MAIL_FROM`을 입력한다. 키를 채팅이나 저장소에 올리지 않는다. `.env`는 Git과 Docker 빌드 컨텍스트에서 제외된다. 기존 설정이 있다면 덮어쓰지 않는다.
 
@@ -37,12 +37,12 @@ python3 -m venv .venv
 | `recover` | 발송 결과를 수동 정정. 이 명령 자체는 메일을 보내지 않음 |
 
 ```sh
-.venv/bin/python -m briefing demo
-.venv/bin/python -m briefing preview
-.venv/bin/python -m briefing prepare
-.venv/bin/python -m briefing status
+uv run --locked python -m briefing demo
+uv run --locked python -m briefing preview
+uv run --locked python -m briefing prepare
+uv run --locked python -m briefing status
 # 본문 검토 및 발신자 설정 후 실제 발송:
-.venv/bin/python -m briefing send
+uv run --locked python -m briefing send
 ```
 
 가상 미리보기는 `var/demo/briefing.html`, 실제 미리보기는 `var/preview/briefing.html`, 저장한 당일 본문은 `var/latest/briefing.html`이다. 각각 일반 텍스트도 생성한다. 실제 편집 실행의 `briefing.json`에는 모델별 입력·출력 토큰 및 실행 시간, 후보·승인 기사 수, 빈 결과 사유를 기록한다. 가격표를 임의로 고정해 비용을 계산하지 않는다. LangSmith에 그래프와 모델 호출을 추적하도록 SDK 연동을 준비했으며 실제 연결은 키 설정 후 확인해야 한다.
@@ -62,20 +62,20 @@ python3 -m venv .venv
 Resend 로그를 확인하고 실제 접수 ID가 있다면:
 
 ```sh
-.venv/bin/python -m briefing recover --day 2026-10-16 --action accepted --provider-id PROVIDER_MESSAGE_ID --note "Provider log confirms acceptance"
+uv run --locked python -m briefing recover --day 2026-10-16 --action accepted --provider-id PROVIDER_MESSAGE_ID --note "Provider log confirms acceptance"
 ```
 
 서비스가 접수하지 않았음을 확인했다면:
 
 ```sh
-.venv/bin/python -m briefing recover --day 2026-10-16 --action not-accepted --note "Provider logs confirm no acceptance"
+uv run --locked python -m briefing recover --day 2026-10-16 --action not-accepted --note "Provider logs confirm no acceptance"
 ```
 
 후자는 `prepared`로 되돌린다. 시도 상한은 초기화하지 않는다. `sending/uncertain`만 정정할 수 있고 근거 메모와 변경 내역을 저장한다. 일일 idempotency key는 보조 장치이며 Resend의 키 보관 시간에 영구 중복 방지를 의존하지 않는다. 저장소를 삭제하면 중복 방지 이력이 사라지므로 `/data`와 SQLite를 유지해야 한다.
 
 ## Render 준비
 
-`Dockerfile`, `requirements.lock`, `render.yaml`을 준비했다. 단일 worker와 `/data` 영구 디스크를 사용한다. 배포 시 OpenAI·LangSmith·Resend 키와 검증된 `MAIL_FROM`을 Render secret으로 설정한다. `render.yaml`은 유료 worker·디스크 구성이며 실제 리소스는 아직 생성하지 않았다.
+`Dockerfile`, `uv.lock`, `render.yaml`을 준비했다. 단일 worker와 `/data` 영구 디스크를 사용한다. 배포 시 OpenAI·LangSmith·Resend 키와 검증된 `MAIL_FROM`을 Render secret으로 설정한다. `render.yaml`은 유료 worker·디스크 구성이며 실제 리소스는 아직 생성하지 않았다.
 
 로컬 검증:
 
@@ -93,3 +93,16 @@ docker run --rm --network none technews-briefing:local python -m briefing demo
 - [LangGraph Graph API](https://docs.langchain.com/oss/python/langgraph/graph-api): 조건 분기와 상태 흐름.
 - [Resend Send Email](https://resend.com/docs/api-reference/emails/send-email), [Idempotency keys](https://resend.com/changelog/idempotency-keys): 발송 API와 24시간 키 보관.
 - [Render Persistent Disks](https://render.com/docs/disks): worker의 영구 저장 구성.
+
+## uv 전환 검증: 2026-10-20
+
+의존성 관리를 `pyproject.toml`과 `uv.lock`으로 통일하고 기존 `requirements.lock`을 제거했다. 개발용 pytest는 `dev` dependency group으로 옮겼으며 `.python-version`의 로컬 기본 Python은 Docker와 같은 3.13이다. 기존 Python 3.13 환경의 패키지 버전은 유지했다.
+
+- `uv sync --locked`, `uv lock --check --offline` 성공
+- `uv run --locked pytest -q`: 37개 통과
+- `uv run --locked python -m briefing demo`: 가상 메일 생성 성공
+- `uv pip check`: 설치된 패키지 간 호환성 검사 통과
+- 별도 임시 환경에서 `uv sync --locked --no-dev --no-editable` 설치 성공
+- uv 기반 Docker 이미지 빌드 성공. 네트워크 차단 상태에서 `doctor`·`demo` 실행과 편집 모듈 로딩 성공, pytest 제외 확인
+
+이 검증은 실제 OpenAI·LangSmith·Resend 연결이나 서버 배포를 수행한 것이 아니다.
