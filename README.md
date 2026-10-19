@@ -1,62 +1,105 @@
 # TechNews Briefing
 
-개인용 영국·미국·한국 IT·AI 뉴스 메일링 프로젝트입니다. 수집·저장, LangGraph 편집, 메일 미리보기·발송, 영국 오전 8시 예약 실행 코드와 Render 배포 설정을 구현했습니다. 실제 API·메일·서버 운영 검증은 비밀 설정과 계정 연결 후 진행해야 합니다.
+TechNews Briefing is a personal email digest of IT and AI developments in the United Kingdom, the United States, and South Korea. It brings regional news into one morning briefing, with English summaries for the UK and US and Korean summaries from Korean-language publishers for South Korea.
 
-## 실행
+The system is designed to run on a server and target **08:00 Europe/London every day**, including weekends, without requiring a personal computer to stay on.
 
-Python 3.11 이상. 수집 명령 자체는 추가 패키지와 API 키가 필요하지 않습니다. 편집·발송 기능은 별도 의존성 설치와 비밀 설정이 필요합니다. 프로젝트 루트에서 실행합니다.
+## What the briefing contains
+
+Each country section includes selected stories with a headline, a concise summary, an explanation of why the story matters, the publisher, publication time, and a link to the original article. The default limit is three stories per country. Sections can contain fewer stories when suitable evidence is unavailable.
+
+Stories are assigned to countries by the event's direct geographic relevance, rather than the publisher's location. The editorial workflow checks for repeated coverage and uses previously sent evidence to assess whether an existing event has a material update.
+
+## How it works
+
+1. **Collect:** Read configured RSS feeds, normalize URLs and timestamps, and filter out stale, undated, or ineligible entries. Store candidates and source-level collection reports in SQLite.
+2. **Select:** Use an OpenAI model within a LangGraph workflow to assess IT/AI relevance, country relevance, and story selection.
+3. **Gather evidence:** When the model requests more context, attempt a bounded lookup of the selected article on its publisher's allowed domains, subject to robots.txt access rules.
+4. **Write and review:** Draft summaries from the supplied evidence, review them, and allow one revision pass. Exclude stories that do not pass review.
+5. **Prepare:** Render HTML and plain-text email bodies and persist the edition before sending.
+6. **Deliver:** Submit the saved edition to Resend and record its acceptance status. Ambiguous delivery results stop automatic retries until manually reconciled.
+
+LangSmith tracing can be enabled to inspect the graph and model calls. Local execution metrics record token usage, elapsed editorial time, and candidate and approved-story counts.
+
+AI review and evidence checks reduce errors but do not guarantee factual accuracy. Original article links remain part of every story.
+
+## Schedule and reliability
+
+By default, generation starts at **07:30**, with scheduled sending beginning at **08:00** in the `Europe/London` time zone, including British Summer Time changes. If preparation runs late, the worker can send once the edition is ready, until the automatic recovery window closes at 09:00. Exact inbox arrival at 08:00 is not guaranteed.
+
+Prepared content is reused for delivery retries. Persistent edition records, a worker lock, atomic send-state changes, and a stable delivery idempotency key help prevent duplicate sends. Provider acceptance is tracked separately from confirmed inbox delivery.
+
+The application is currently restricted to one configured recipient. It uses a single worker and a persistent SQLite database.
+
+## Technology
+
+| Component | Purpose |
+|---|---|
+| Python 3.11+ | Collection, scheduling, storage, and command-line tools |
+| LangGraph | Conditional selection, evidence lookup, writing, and review |
+| OpenAI | Structured editorial decisions and summaries |
+| LangSmith | Optional graph and model tracing |
+| SQLite | Collection reports, prepared editions, and delivery history |
+| Resend | HTML and plain-text email delivery |
+| Docker / Render | Containerized server deployment configuration |
+
+Configured feeds include BBC, The Guardian, CNBC, NPR, Yonhap, Hankyoreh, and SBS. Their URLs and filtering settings are maintained in [`sources.json`](sources.json).
+
+## Getting started
+
+Run these commands from the repository root on macOS or Linux:
 
 ```sh
-python3 -m briefing collect
-python3 -m briefing collect --since 2026-10-15T08:00:00+01:00 --until 2026-10-16T08:00:00+01:00 --limit 50
-python3 -m unittest discover -s tests -v
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.lock
+python -m pip install --no-deps -e .
+cp .env.example .env
 ```
 
-`collect`는 공개 RSS에 접속하고 후보 및 실행 보고서를 `var/briefing.sqlite3`에 저장하며 JSON 보고서를 출력합니다. AI 호출과 이메일 발송은 수행하지 않습니다. 모든 소스가 실패하면 종료 코드 2를 반환합니다. 기본 기간은 최근 24시간이며 `--sources`, `--database`로 경로를 변경할 수 있습니다.
+If a `.env` file already exists, keep it and update its settings instead of overwriting it. Configure the following locally or through your hosting provider's secret settings:
 
-`briefing/collection.py`는 수집·정규화·소스별 제외 집계·저장, `briefing/__main__.py`는 명령행 실행을 담당합니다. `sources.json`은 후보 소스 설정이며 매체 소재지를 사건 국가로 사용하지 않습니다.
+| Setting | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | Access to the editorial model |
+| `OPENAI_MODEL` | Model name; defaults to `gpt-4.1-mini` |
+| `RESEND_API_KEY` | Email delivery credentials |
+| `MAIL_FROM` | An authorized Resend sender address |
+| `LANGSMITH_TRACING` | Enable or disable tracing |
+| `LANGSMITH_API_KEY` | Required when tracing is enabled |
+| `LANGSMITH_PROJECT` | Trace project name |
+| `DATA_DIR` | Persistent storage directory; defaults to `var` |
+| `PREPARATION_MINUTES` | Minutes before 08:00 to begin generation; defaults to `30` |
+| `MAX_PER_COUNTRY` | Maximum selected stories per section; defaults to `3` |
 
-[실행·비밀 설정·복구·배포 안내](docs/06-operations.md)를 먼저 확인하세요. 최신 설계 판단, 실제 수집 검증과 남은 결정은 [구현 검토 기록](docs/05-implementation-review.md)을 확인하세요. 아래는 구현 전 이관 당시의 원래 설명으로, 당시 검증 범위를 기록한 자료입니다. 현재 진행 상태는 위 운영 안내가 우선합니다.
+Keep credentials out of version control. `.env` is excluded from Git and Docker build context.
 
----
+### Commands
 
-# 새 Codex 프로젝트 전달 패키지
+```sh
+python -m briefing doctor   # Check configuration without exposing key values
+python -m briefing collect  # Collect RSS candidates without AI or email
+python -m briefing demo     # Generate an offline preview with fictional stories
+python -m briefing preview  # Generate a real-news AI preview without sending
+python -m briefing prepare  # Generate and save today's edition without sending
+python -m briefing status   # Inspect today's delivery state
+python -m briefing serve    # Run daily preparation and scheduled delivery
+```
 
-이 프로젝트는 개인용 IT·AI 뉴스 메일링 시스템입니다. 사용자가 새 Codex 프로젝트에서 직접 구조와 코드를 리뷰하며 개발하려고 준비한 자료입니다.
+`python -m briefing send` immediately submits an already prepared edition to the configured recipient; this manual command does not wait until 08:00.
 
-## 읽는 순서
+Preview files are written under `DATA_DIR`: `demo/briefing.html` for fictional examples, `preview/briefing.html` for real-news previews, and `latest/briefing.html` for the prepared edition. Plain-text versions are also generated.
 
-1. `docs/01-requirements.md`: 사용자가 확정한 요구사항, 제안과 미결정 사항
-2. `docs/02-system-design.md`: 에이전트 역할, 모듈 경계와 데이터 흐름 제안
-3. `docs/03-development-plan.md`: 리뷰 가능한 단계별 개발 작업과 완료 조건
-4. `docs/04-review-and-status.md`: 검수 기준, 기존 초안의 검증 범위와 검토 과제
-5. `CODEX_HANDOFF.md`: 새 Codex 채팅의 첫 메시지로 사용할 전달문
+## Deployment and testing
 
-## 파일 구분
+[`render.yaml`](render.yaml) defines a Docker worker with a persistent `/data` disk. Deployment requires service credentials, an authorized sender, and a paid hosting configuration. Keep one worker and preserve the database across restarts and deployments.
 
-- `docs/`: 이관용 기획 문서. 개발 논의의 출발점입니다.
-- `reference/prototype/`: 이전 대화에서 만들어진 구현 초안의 복사본. **사용자가 코드나 기술 선택을 승인한 상태가 아닙니다.** 재사용 여부는 새 프로젝트에서 리뷰해 결정합니다.
-- `reference/prototype/preview.html`: 실제 뉴스가 아닌 가상 기사로 만든 메일 화면 예시입니다.
-- `reference/prototype/README.md`: 당시 초안 설명입니다. 기획 확정 문서보다 우선하지 않습니다.
+```sh
+python -m pip install -e '.[dev]'
+python -m pytest -q
+docker build -t technews-briefing:local .
+```
 
-기존 초안은 원래 위치에 그대로 두었습니다. 복사본에서 가상환경, 캐시, 실행 기록 DB와 실제 비밀 설정 파일을 제외했습니다. 수신 이메일은 요구사항과 예제 설정에 포함돼 있습니다.
+Collection, editorial branching, scheduling, delivery-state handling, and recovery have automated tests. Local Docker build and offline startup checks have passed. Live AI quality, LangSmith connectivity, inbox delivery, and unattended server operation still require end-to-end verification. Bounded calls and retries do not enforce a monthly spending cap.
 
-## 현재 상태
-
-2026-10-16 대화 기준:
-
-- 기획 요구사항 일부 확정, 기술 선택 및 코드 구조는 사용자 리뷰 전
-- 참고용 Python 구현과 테스트, Dockerfile, Render 배포 설정 존재
-- 당시 로컬 테스트 18개 통과, RSS 7곳의 응답 및 수집 확인
-- 실제 LLM 요약 품질, LangSmith 연결, 이메일 발송·도착, 서버 배포 미검증
-- Docker 데몬이 실행되지 않아 컨테이너 빌드 미검증
-- 서버 리소스 생성·배포·예약 실행 활성화 없음
-- 이관 정리 작업에서는 코드를 수정하거나 테스트·발송·배포를 실행하지 않음
-
-**역할 합의:** 이 대화의 어시스턴트는 기획자 역할입니다. 구현은 사용자가 새 Codex 프로젝트에서 진행하고 직접 리뷰합니다. 기존 초안이 이미 최종 구현이라는 전제로 진행하면 안 됩니다.
-
-## 새 프로젝트에서 시작하기
-
-이 폴더를 새 프로젝트에 넣고 `CODEX_HANDOFF.md`의 내용을 첫 메시지로 전달하세요. `reference/prototype/`은 참고 자료이므로 그대로 실행하거나 배포하는 대신 먼저 요구사항과 구조를 대조하면 됩니다.
-
-이 패키지에는 배포 계정, API 키, 비밀번호가 포함되지 않습니다. 서비스 연결과 비밀 설정은 새 프로젝트에서 진행합니다.
+See the [operations guide](docs/06-operations.md) (Korean) for delivery reconciliation, configuration details, and deployment verification.
