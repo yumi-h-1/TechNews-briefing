@@ -1,3 +1,25 @@
+# TechNews Briefing
+
+개인용 영국·미국·한국 IT·AI 뉴스 메일링 프로젝트입니다. 수집·저장, LangGraph 편집, 메일 미리보기·발송, 영국 오전 8시 예약 실행 코드와 Render 배포 설정을 구현했습니다. 실제 API·메일·서버 운영 검증은 비밀 설정과 계정 연결 후 진행해야 합니다.
+
+## 실행
+
+Python 3.11 이상. 수집 명령 자체는 추가 패키지와 API 키가 필요하지 않습니다. 편집·발송 기능은 별도 의존성 설치와 비밀 설정이 필요합니다. 프로젝트 루트에서 실행합니다.
+
+```sh
+python3 -m briefing collect
+python3 -m briefing collect --since 2026-10-15T08:00:00+01:00 --until 2026-10-16T08:00:00+01:00 --limit 50
+python3 -m unittest discover -s tests -v
+```
+
+`collect`는 공개 RSS에 접속하고 후보 및 실행 보고서를 `var/briefing.sqlite3`에 저장하며 JSON 보고서를 출력합니다. AI 호출과 이메일 발송은 수행하지 않습니다. 모든 소스가 실패하면 종료 코드 2를 반환합니다. 기본 기간은 최근 24시간이며 `--sources`, `--database`로 경로를 변경할 수 있습니다.
+
+`briefing/collection.py`는 수집·정규화·소스별 제외 집계·저장, `briefing/__main__.py`는 명령행 실행을 담당합니다. `sources.json`은 후보 소스 설정이며 매체 소재지를 사건 국가로 사용하지 않습니다.
+
+[실행·비밀 설정·복구·배포 안내](docs/06-operations.md)를 먼저 확인하세요. 최신 설계 판단, 실제 수집 검증과 남은 결정은 [구현 검토 기록](docs/05-implementation-review.md)을 확인하세요. 아래는 구현 전 이관 당시의 원래 설명으로, 당시 검증 범위를 기록한 자료입니다. 현재 진행 상태는 위 운영 안내가 우선합니다.
+
+---
+
 # 새 Codex 프로젝트 전달 패키지
 
 이 프로젝트는 개인용 IT·AI 뉴스 메일링 시스템입니다. 사용자가 새 Codex 프로젝트에서 직접 구조와 코드를 리뷰하며 개발하려고 준비한 자료입니다.

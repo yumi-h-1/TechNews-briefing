@@ -1,0 +1,33 @@
+# Preparation only: creation incurs Render charges. Keep one instance and one disk.
+services:
+  - type: worker
+    name: technews-briefing
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    numInstances: 1
+    disk:
+      name: briefing-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: OPENAI_MODEL
+        value: gpt-4.1-mini
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: LANGSMITH_TRACING
+        value: "true"
+      - key: LANGSMITH_API_KEY
+        sync: false
+      - key: LANGSMITH_PROJECT
+        value: technews-briefing
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: PREPARATION_MINUTES
+        value: "30"
+      - key: MAX_PER_COUNTRY
+        value: "3"
