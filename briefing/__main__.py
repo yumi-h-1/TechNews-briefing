@@ -18,6 +18,7 @@ def main():
     collect_parser.add_argument("--limit", type=int, default=50)
     for name in ("doctor", "demo", "preview", "prepare", "send", "serve", "status"):
         sub.add_parser(name)
+    sub.add_parser("once", help="One scheduled attempt (for cron): prepare, wait until 08:00, send")
     recovery = sub.add_parser("recover", help="Reconcile provider logs; never automatically resends")
     recovery.add_argument("--day", required=True)
     recovery.add_argument("--action", choices=["accepted", "not-accepted"], required=True)
@@ -34,7 +35,7 @@ def main():
         return
     from briefing.config import Settings
     from briefing.storage import Store
-    from briefing.app import deliver, generate, prepare, schedule, serve, worker_lock, write_preview
+    from briefing.app import deliver, generate, prepare, run_once, schedule, serve, worker_lock, write_preview
     settings = Settings.load()
     now = datetime.now(timezone.utc)
     day, prepare_at, send_at = schedule(now, settings)
@@ -66,7 +67,7 @@ def main():
         print(settings.data_dir / "demo" / "briefing.html")
         return
     # Sending a prepared edition does not require another OpenAI call.
-    missing = settings.missing(send=args.command in {"send", "serve"})
+    missing = settings.missing(send=args.command in {"send", "serve", "once"})
     if args.command == "send":
         missing = [name for name in ("RESEND_API_KEY", "MAIL_FROM") if not os.getenv(name)]
     if missing:
@@ -81,6 +82,12 @@ def main():
         print(deliver(settings, now))
     elif args.command == "serve":
         serve(settings)
+    elif args.command == "once":
+        result = run_once(settings)
+        print(result)
+        # Fail the run (so GitHub notifies) unless it sent or was simply outside the send window.
+        if result not in {"accepted", "outside_window"}:
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

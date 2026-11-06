@@ -83,6 +83,7 @@ uv run --locked python -m briefing preview  # Generate a real-news AI preview wi
 uv run --locked python -m briefing prepare  # Generate and save today's edition without sending
 uv run --locked python -m briefing status   # Inspect today's delivery state
 uv run --locked python -m briefing serve    # Run daily preparation and scheduled delivery
+uv run --locked python -m briefing once     # One scheduled attempt: prepare, wait until 08:00, send (for cron)
 ```
 
 `uv run --locked python -m briefing send` immediately submits an already prepared edition to the configured recipient; this manual command does not wait until 08:00.
@@ -102,6 +103,18 @@ uv lock --upgrade-package package-name  # Update a specific dependency
 Commit both `pyproject.toml` and `uv.lock` when dependencies change. Normal setup and execution use `--locked` to detect an outdated lockfile. Docker installs only application dependencies with `uv sync --locked --no-dev`.
 
 ## Deployment and testing
+
+### Free: GitHub Actions (recommended for personal use)
+
+[`.github/workflows/daily-briefing.yml`](.github/workflows/daily-briefing.yml) runs `briefing once` every morning on GitHub's servers, so no computer needs to stay on. It is free for public repositories.
+
+1. In the repository on GitHub, open **Settings → Secrets and variables → Actions** and add the secrets `OPENAI_API_KEY`, `RESEND_API_KEY`, and `MAIL_FROM` (plus `LANGSMITH_API_KEY` if you set the variable `LANGSMITH_TRACING` to `true`).
+2. Open **Actions → Daily briefing → Run workflow** and run `doctor`; the `missing` list should be empty.
+3. From then on the workflow starts at about 07:17 London time, prepares the edition, waits until 08:00, and sends it. Backup triggers retry later that morning and never resend an accepted edition.
+
+Limitations: GitHub may start scheduled jobs late or occasionally skip one, so arrival can be later than 08:00 and nothing is sent after 09:00. The SQLite state is kept in the Actions cache, which GitHub deletes after 7 days without use. GitHub disables scheduled workflows in public repositories after 60 days without repository activity; re-enable it from the Actions tab when GitHub emails you.
+
+### Paid: Render worker
 
 [`render.yaml`](render.yaml) defines a Docker worker with a persistent `/data` disk. Deployment requires service credentials, an authorized sender, and a paid hosting configuration. Keep one worker and preserve the database across restarts and deployments.
 

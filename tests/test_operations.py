@@ -1,9 +1,9 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 import httpx
 import pytest
-from briefing.app import deliver, prepare, schedule, tick, worker_lock
+from briefing.app import deliver, prepare, run_once, schedule, tick, worker_lock
 from briefing.config import Settings
 from briefing.mail import DeliveryUncertain, send_email
 from briefing.storage import Store
@@ -167,3 +167,27 @@ def test_generation_trace_input_excludes_mail_and_secrets(tmp_path, monkeypatch)
     assert "sender@example.com" not in trace_input
     assert "yumi.heo.01@gmail.com" not in trace_input
     assert result["metrics"]["result"] == "no_relevant_candidates"
+
+
+def test_run_once_prepares_waits_and_sends_once(tmp_path, monkeypatch):
+    settings = Settings(tmp_path, preparation_minutes=60)
+    generation = Mock(return_value=payload())
+    sending = Mock(return_value="provider-123")
+    monkeypatch.setattr("briefing.app.generate", generation)
+    monkeypatch.setattr("briefing.mail.send_email", sending)
+    current = [NOW.replace(hour=6, minute=17)]  # 07:17 London (BST)
+    def sleep(seconds):
+        current[0] += timedelta(seconds=seconds)
+    assert run_once(settings, clock=lambda: current[0], sleep=sleep) == "accepted"
+    assert current[0] >= NOW  # did not send before 08:00 London
+    # A later backup run the same day is a no-op.
+    assert run_once(settings, clock=lambda: current[0] + timedelta(minutes=30), sleep=sleep) == "accepted"
+    assert generation.call_count == 1 and sending.call_count == 1
+
+
+def test_run_once_outside_window_does_nothing(tmp_path, monkeypatch):
+    generation = Mock()
+    monkeypatch.setattr("briefing.app.generate", generation)
+    early = NOW.replace(hour=5, minute=17)  # 06:17 London
+    assert run_once(Settings(tmp_path, preparation_minutes=60), clock=lambda: early, sleep=Mock()) == "outside_window"
+    generation.assert_not_called()

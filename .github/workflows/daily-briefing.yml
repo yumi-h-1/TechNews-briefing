@@ -1,0 +1,63 @@
+name: Daily briefing
+
+# Free alternative to the always-on Render worker: GitHub starts a short job each morning.
+# Cron is UTC and GitHub may start scheduled jobs late, so several triggers cover
+# both GMT and BST; `briefing once` exits immediately outside 07:00–09:00 London
+# and never sends the same day's edition twice.
+on:
+  schedule:
+    - cron: "17 6 * * *"   # 07:17 London in summer (BST) — main run
+    - cron: "17 7 * * *"   # 07:17 London in winter (GMT) — main run / 08:17 BST backup
+    - cron: "47 7 * * *"   # 07:47 GMT / 08:47 BST — backup
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "doctor = check secrets only; once = run now (sends only between 07:00 and 09:00 London)"
+        type: choice
+        options: [doctor, once]
+        default: doctor
+
+concurrency:
+  group: daily-briefing
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  briefing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DATA_DIR: var
+      PREPARATION_MINUTES: "60"
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4.1-mini' }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      MAIL_FROM: ${{ secrets.MAIL_FROM }}
+      LANGSMITH_TRACING: ${{ vars.LANGSMITH_TRACING || 'false' }}
+      LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+      LANGSMITH_PROJECT: ${{ vars.LANGSMITH_PROJECT || 'technews-briefing' }}
+      COMMAND: ${{ inputs.command || 'once' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --no-dev
+
+      # The SQLite database keeps send state and story history between runs.
+      - name: Restore briefing database
+        uses: actions/cache/restore@v4
+        with:
+          path: var/briefing.sqlite3
+          key: briefing-db-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: briefing-db-
+
+      - name: Run briefing
+        run: uv run --locked --no-dev python -m briefing "$COMMAND"
+
+      - name: Save briefing database
+        if: always() && hashFiles('var/briefing.sqlite3') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: var/briefing.sqlite3
+          key: briefing-db-${{ github.run_id }}-${{ github.run_attempt }}

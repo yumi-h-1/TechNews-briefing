@@ -151,6 +151,19 @@ def tick(settings, now, clock=None):
     return "prepared"
 
 
+def run_once(settings, clock=None, sleep=time.sleep):
+    """One scheduled attempt for cron runners: prepare if needed, wait until 08:00, then send."""
+    clock = clock or (lambda: datetime.now(timezone.utc))
+    result = tick(settings, clock(), clock)
+    while result == "prepared":
+        send_at = schedule(clock(), settings)[2]
+        wait = max(1.0, (send_at - clock()).total_seconds())
+        LOG.info("Edition prepared; waiting %.0f seconds until send time", wait)
+        sleep(wait)
+        result = tick(settings, clock(), clock)
+    return result
+
+
 def serve(settings):
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
