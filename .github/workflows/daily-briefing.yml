@@ -40,13 +40,13 @@ jobs:
       LANGSMITH_PROJECT: ${{ vars.LANGSMITH_PROJECT || 'technews-briefing' }}
       COMMAND: ${{ inputs.command || 'once' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
       - run: uv sync --locked --no-dev
 
       # The SQLite database keeps send state and story history between runs.
       - name: Restore briefing database
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: var/briefing.sqlite3
           key: briefing-db-${{ github.run_id }}-${{ github.run_attempt }}
@@ -57,7 +57,7 @@ jobs:
 
       - name: Save briefing database
         if: always() && hashFiles('var/briefing.sqlite3') != ''
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: var/briefing.sqlite3
           key: briefing-db-${{ github.run_id }}-${{ github.run_attempt }}
