@@ -191,3 +191,31 @@ def test_run_once_outside_window_does_nothing(tmp_path, monkeypatch):
     early = NOW.replace(hour=5, minute=17)  # 06:17 London
     assert run_once(Settings(tmp_path, preparation_minutes=60), clock=lambda: early, sleep=Mock()) == "outside_window"
     generation.assert_not_called()
+
+
+def test_run_once_early_start_waits_for_window(tmp_path, monkeypatch):
+    monkeypatch.setattr("briefing.app.generate", Mock(return_value=payload()))
+    sending = Mock(return_value="provider-123")
+    monkeypatch.setattr("briefing.mail.send_email", sending)
+    current = [NOW.replace(hour=5, minute=17)]  # 06:17 London, 43 minutes before the window
+    def sleep(seconds):
+        current[0] += timedelta(seconds=seconds)
+    assert run_once(Settings(tmp_path, preparation_minutes=60), clock=lambda: current[0], sleep=sleep) == "accepted"
+    sending.assert_called_once()
+
+
+def test_run_once_late_start_reports_missed(tmp_path, monkeypatch):
+    generation = Mock()
+    monkeypatch.setattr("briefing.app.generate", generation)
+    late = NOW.replace(hour=12, minute=16)  # 13:16 London, after the window
+    assert run_once(Settings(tmp_path, preparation_minutes=60), clock=lambda: late, sleep=Mock()) == "missed"
+    generation.assert_not_called()
+
+
+def test_run_once_late_start_after_sent_edition_is_fine(tmp_path, monkeypatch):
+    monkeypatch.setattr("briefing.app.generate", Mock(return_value=payload()))
+    monkeypatch.setattr("briefing.mail.send_email", Mock(return_value="provider-123"))
+    settings = Settings(tmp_path, preparation_minutes=60)
+    assert run_once(settings, clock=lambda: NOW, sleep=Mock()) == "accepted"
+    late = NOW.replace(hour=12)
+    assert run_once(settings, clock=lambda: late, sleep=Mock()) == "accepted"

@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from briefing.agent import build_graph, normalize_draft, normalize_plan
+from briefing.agent import build_graph, fit_headline, normalize_draft, normalize_plan
 from briefing.app import deliver
 from briefing.config import Settings
 from briefing.mail import DeliveryUncertain, send_email
@@ -122,3 +122,36 @@ def test_update_is_compared_to_latest_sent_evidence():
     ]
     updated = story(update_reason="Release now available", update_quote="released an AI evaluation toolkit")
     assert not normalize_draft(Draft(stories=[updated]), plan("a"), [article()], history).stories
+
+
+def test_long_verbatim_quote_is_accepted():
+    long_article = article()
+    long_article.excerpt = ("Dave Wehner, Meta’s chief strategy officer, is leaving the company to become CFO of "
+                            "Fireworks, the AI infrastructure startup valued at $17.5 billion in July.")
+    quote = "Dave Wehner, Meta's chief strategy officer, is leaving the company to become CFO of Fireworks"
+    assert normalize_draft(Draft(stories=[story(evidence_quote=quote)]), plan("a"), [long_article], []).stories
+
+
+def test_ellipsis_joined_spans_must_each_be_in_source():
+    ok = story(evidence_quote="A UK team released ... on Friday.")
+    bad = story(evidence_quote="A UK team released ... on Monday morning")
+    assert normalize_draft(Draft(stories=[ok]), plan("a"), [article()], []).stories
+    assert not normalize_draft(Draft(stories=[bad]), plan("a"), [article()], []).stories
+
+
+def test_headlines_are_capped_per_language():
+    long_en = "Philadelphia activist blocks food delivery robots citing First Amendment rights"
+    short = fit_headline(long_en, "US")
+    assert len(short) <= 70 and short.endswith("…") and short.startswith("Philadelphia activist")
+    assert fit_headline("미래에셋증권, 해킹으로 3만 9천여 명 개인정보 유출 신고", "KR") == "미래에셋증권, 해킹으로 3만 9천여 명 개인정보 유출 신고"
+    assert len(fit_headline("가" * 50, "KR")) == 35
+    assert fit_headline("UK team shares toolkit", "UK") == "UK team shares toolkit"
+
+
+def test_near_verbatim_quote_with_dropped_words_is_accepted():
+    source = article()
+    source.excerpt = ("Susan Lawrence was one of the main UK promoters of the HyperVerse cryptocurrency scheme, which was "
+                      "named in US court documents as an alleged “pyramid and Ponzi scheme” that cheated investors.")
+    quote = ("Susan Lawrence was one of the main UK promoters of the HyperVerse cryptocurrency scheme, named in "
+             "US court documents as an alleged pyramid and Ponzi scheme that cheated investors.")
+    assert normalize_draft(Draft(stories=[story(evidence_quote=quote)]), plan("a"), [source], []).stories

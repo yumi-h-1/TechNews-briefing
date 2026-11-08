@@ -35,10 +35,10 @@ class Plan(BaseModel):
 class Story(BaseModel):
     article_id: str
     country: Country
-    headline: str
+    headline: str = Field(description="Own short summary headline, not the original title; max 70 chars (KR: 35)")
     summary: str
     why_it_matters: str
-    evidence_quote: str = Field(description="Short verbatim substring from supplied article evidence")
+    evidence_quote: str = Field(description="One contiguous span copied exactly from the article evidence, no ellipsis")
     update_reason: str = ""
     update_quote: str = ""
     event_key: str = Field(description="Stable lowercase English slug for the underlying event")
@@ -63,4 +63,5 @@ class AgentState(TypedDict, total=False):
     selection_reason: str
     metrics: dict
     revisions: int
+    drafted: int
     warnings: list[str]

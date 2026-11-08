@@ -2,12 +2,14 @@ name: Daily briefing
 
 # Free alternative to the always-on Render worker: GitHub starts a short job each morning.
 # Cron is UTC and GitHub may start scheduled jobs late, so several triggers cover
-# both GMT and BST; `briefing once` exits immediately outside 07:00–09:00 London
-# and never sends the same day's edition twice.
+# both GMT and BST. `briefing once` waits when started up to two hours early, fails
+# (red run) when it starts after 09:00 London without having sent that day, and never
+# sends the same day's edition twice. External triggers can call workflow_dispatch.
 on:
   schedule:
-    - cron: "17 6 * * *"   # 07:17 London in summer (BST) — main run
-    - cron: "17 7 * * *"   # 07:17 London in winter (GMT) — main run / 08:17 BST backup
+    - cron: "17 5 * * *"   # 05:17 GMT / 06:17 BST — waits for 07:00 London
+    - cron: "17 6 * * *"   # 06:17 GMT / 07:17 BST
+    - cron: "17 7 * * *"   # 07:17 GMT / 08:17 BST — backup
     - cron: "47 7 * * *"   # 07:47 GMT / 08:47 BST — backup
   workflow_dispatch:
     inputs:
@@ -27,7 +29,7 @@ permissions:
 jobs:
   briefing:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 240
     env:
       DATA_DIR: var
       PREPARATION_MINUTES: "60"

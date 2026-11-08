@@ -8,12 +8,13 @@ class DeliveryUncertain(RuntimeError):
     """Provider acceptance is unknown; operator reconciliation is required."""
 
 
-def send_email(settings, payload, day, now):
+def send_email(settings, payload, day, now, idempotency_key=None):
     if settings.recipient != RECIPIENT:
         raise ValueError("Only the project owner can receive email")
     if not settings.sender:
         raise ValueError("MAIL_FROM is required")
-    key = "briefing-" + hashlib.sha256(f"{settings.recipient}:{day}".encode()).hexdigest()[:32]
+    # One key per recipient and day stops the provider from sending a second edition that day.
+    key = idempotency_key or "briefing-" + hashlib.sha256(f"{settings.recipient}:{day}".encode()).hexdigest()[:32]
     try:
         response = httpx.post("https://api.resend.com/emails", timeout=30,
                               headers={"Authorization": "Bearer " + os.environ["RESEND_API_KEY"], "Idempotency-Key": key},

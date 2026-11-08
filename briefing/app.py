@@ -65,7 +65,12 @@ def generate(settings, store, now):
         draft = Draft.model_validate(state["draft"])
         articles = [Article.model_validate(a) for a in state["articles"]]
         warnings = state["warnings"]
-        reason = "approved" if draft.stories else ("review_rejected" if state["plan"]["picks"] else "no_relevant_candidates")
+        if draft.stories:
+            reason = "approved"
+        elif not state["plan"]["picks"]:
+            reason = "no_relevant_candidates"
+        else:
+            reason = "draft_filtered" if not state.get("drafted") else "review_rejected"
     else:
         draft = Draft(stories=[])
     if not draft.stories:
@@ -151,9 +156,22 @@ def tick(settings, now, clock=None):
     return "prepared"
 
 
+EARLY_START_LIMIT = timedelta(hours=2)
+
+
 def run_once(settings, clock=None, sleep=time.sleep):
-    """One scheduled attempt for cron runners: prepare if needed, wait until 08:00, then send."""
+    """One scheduled attempt for cron runners: prepare if needed, wait until 08:00, then send.
+
+    A start up to two hours early waits for the preparation window. A start after the window
+    reports "missed" unless today's edition was already sent, so a late cron is not silent.
+    """
     clock = clock or (lambda: datetime.now(timezone.utc))
+    now = clock()
+    day, prepare_at, send_at = schedule(now, settings)
+    if timedelta(0) < prepare_at - now <= EARLY_START_LIMIT:
+        wait = (prepare_at - now).total_seconds()
+        LOG.info("Started early; waiting %.0f seconds for the preparation window", wait)
+        sleep(wait)
     result = tick(settings, clock(), clock)
     while result == "prepared":
         send_at = schedule(clock(), settings)[2]
@@ -161,6 +179,9 @@ def run_once(settings, clock=None, sleep=time.sleep):
         LOG.info("Edition prepared; waiting %.0f seconds until send time", wait)
         sleep(wait)
         result = tick(settings, clock(), clock)
+    if result == "outside_window" and clock() >= send_at + timedelta(hours=1):
+        row = Store(settings.data_dir).get(day)
+        result = row["status"] if row else "missed"
     return result
 
 

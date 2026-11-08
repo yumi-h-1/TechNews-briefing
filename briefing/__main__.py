@@ -16,8 +16,11 @@ def main():
     collect_parser.add_argument("--since", type=instant)
     collect_parser.add_argument("--until", type=instant)
     collect_parser.add_argument("--limit", type=int, default=50)
-    for name in ("doctor", "demo", "preview", "prepare", "send", "serve", "status"):
+    for name in ("doctor", "demo", "prepare", "send", "serve", "status"):
         sub.add_parser(name)
+    preview_parser = sub.add_parser("preview", help="Real-news AI preview; nothing is recorded as sent")
+    preview_parser.add_argument("--send", action="store_true",
+                                help="Also email it as a [TEST] message (separate from the daily edition)")
     sub.add_parser("once", help="One scheduled attempt (for cron): prepare, wait until 08:00, send")
     recovery = sub.add_parser("recover", help="Reconcile provider logs; never automatically resends")
     recovery.add_argument("--day", required=True)
@@ -67,7 +70,7 @@ def main():
         print(settings.data_dir / "demo" / "briefing.html")
         return
     # Sending a prepared edition does not require another OpenAI call.
-    missing = settings.missing(send=args.command in {"send", "serve", "once"})
+    missing = settings.missing(send=args.command in {"send", "serve", "once"} or getattr(args, "send", False))
     if args.command == "send":
         missing = [name for name in ("RESEND_API_KEY", "MAIL_FROM") if not os.getenv(name)]
     if missing:
@@ -76,6 +79,12 @@ def main():
         payload = generate(settings, Store(settings.data_dir), now)
         write_preview(payload, settings.data_dir / "preview")
         print(settings.data_dir / "preview" / "briefing.html")
+        if args.send:
+            import uuid
+            from briefing.mail import send_email
+            test = payload | {"subject": "[TEST] " + payload["subject"]}
+            provider_id = send_email(settings, test, day, now, idempotency_key="briefing-test-" + uuid.uuid4().hex)
+            print("Test email accepted by provider:", provider_id)
     elif args.command == "prepare":
         print(prepare(settings, now))
     elif args.command == "send":
@@ -85,6 +94,8 @@ def main():
     elif args.command == "once":
         result = run_once(settings)
         print(result)
+        if result == "missed":
+            print("Started after the 07:00-09:00 London window and today's edition was not sent")
         # Fail the run (so GitHub notifies) unless it sent or was simply outside the send window.
         if result not in {"accepted", "outside_window"}:
             raise SystemExit(1)
