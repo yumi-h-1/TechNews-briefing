@@ -36,7 +36,8 @@
 | `briefing/app.py` | 명령 실행, 생성·발송 제어、스케줄러 |
 | `briefing/demo.py` | 가상 기사 예시 |
 | `tests/test_briefing.py` | 모의 모델·메일 서비스 기반 테스트 |
-| `Dockerfile`, `render.yaml` | 미검증 서버 배포 초안 |
+| `.github/workflows/daily-briefing.yml` | 현재 배포: GitHub Actions 매일 예약 실행 |
+| `Dockerfile`, `render.yaml` | 보류된 유료 대안(Render worker). [이유](06-operations.md#dockerrender를-쓰지-않는-이유) |
 | `.env.example` | 비어 있는 인증정보 설정 예시 |
 
 ## 이전 대화에서 확인한 사실

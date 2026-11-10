@@ -4,6 +4,8 @@
 
 2026-10-16 사용자가 영국 오전 8시 발송을 목표로 사전 생성하고 OpenAI·Resend·Render 기준으로 준비하기로 선택했다. 현재 기본 모델은 참고 초안의 `gpt-4.1-mini`이며 환경변수로 바꿀 수 있다. 최신 모델 또는 최적 품질·비용이 검증됐다는 의미는 아니다.
 
+2026-11-07 배포 방식을 Render 상시 worker(Docker)에서 GitHub Actions 예약 실행으로 바꿨다. 이유와 운영 방법은 아래 [GitHub Actions 운영](#github-actions-운영)과 [Docker·Render를 쓰지 않는 이유](#dockerrender를-쓰지-않는-이유)에 정리했다. 다음 단락은 `serve` worker 기준의 기본값이다.
+
 생성 시작은 임시 기본값 07:30 Europe/London이다. `PREPARATION_MINUTES=30`으로 조절한다. 08:00 이전에는 스케줄러가 발송하지 않는다. 개인 worker는 30초 간격으로 검사하므로 정확히 08:00:00 접수와 받은편지함 도착을 보장하지 않는다. 생성이 늦어지면 08:00 이후 준비되는 대로 발송하며 현지 09:00 이후에는 자동 복구를 멈춘다. 이 1시간 복구 창, 국가별 최대 3개, 호출 제한은 임시 운영 기본값이다.
 
 ## 로컬 준비
@@ -16,7 +18,7 @@ uv run --locked pytest -q
 uv run --locked python -m briefing doctor
 ```
 
-`uv sync --locked`가 `.venv`와 개발용 패키지까지 설치하므로 별도 가상환경 활성화는 필요 없다. 패키지 추가는 `uv add`, 개발용 패키지 추가는 `uv add --dev`로 처리한다. 의존성을 변경하면 `pyproject.toml`과 `uv.lock`을 함께 커밋한다. Docker는 `uv sync --locked --no-dev`로 운영용 패키지만 설치한다.
+`uv sync --locked`가 `.venv`와 개발용 패키지까지 설치하므로 별도 가상환경 활성화는 필요 없다. 패키지 추가는 `uv add`, 개발용 패키지 추가는 `uv add --dev`로 처리한다. 의존성을 변경하면 `pyproject.toml`과 `uv.lock`을 함께 커밋한다. GitHub Actions 워크플로와 Docker 이미지는 모두 `uv sync --locked --no-dev`로 운영용 패키지만 설치한다.
 
 `.env.example`을 `.env`로 복사한 뒤 자신의 편집기에서 OpenAI·LangSmith·Resend 키와 `MAIL_FROM`을 입력한다. 키를 채팅이나 저장소에 올리지 않는다. `.env`는 Git과 Docker 빌드 컨텍스트에서 제외된다. 기존 설정이 있다면 덮어쓰지 않는다.
 
@@ -73,7 +75,25 @@ uv run --locked python -m briefing recover --day 2026-10-16 --action not-accepte
 
 후자는 `prepared`로 되돌린다. 시도 상한은 초기화하지 않는다. `sending/uncertain`만 정정할 수 있고 근거 메모와 변경 내역을 저장한다. 일일 idempotency key는 보조 장치이며 Resend의 키 보관 시간에 영구 중복 방지를 의존하지 않는다. 저장소를 삭제하면 중복 방지 이력이 사라지므로 `/data`와 SQLite를 유지해야 한다.
 
-## Render 준비
+## GitHub Actions 운영
+
+[`.github/workflows/daily-briefing.yml`](../.github/workflows/daily-briefing.yml)이 GitHub 서버에서 `briefing once`를 실행한다. 공개 저장소에서는 무료다.
+
+- **비밀값:** 저장소 **Settings → Secrets and variables → Actions**에 `OPENAI_API_KEY`, `RESEND_API_KEY`, `MAIL_FROM`을 secret으로 넣는다. `LANGSMITH_TRACING` 변수를 `true`로 두면 `LANGSMITH_API_KEY`도 넣는다. `OPENAI_MODEL`, `LANGSMITH_PROJECT`는 선택 변수다.
+- **점검:** **Actions → Daily briefing → Run workflow**에서 `doctor`를 실행해 `missing`이 비어 있는지 확인한다.
+- **시간:** 워크플로는 `PREPARATION_MINUTES=60`을 사용하므로 07:00에 생성을 시작하고 08:00 이전에는 발송하지 않는다. GitHub 예약 실행은 늦게 시작되는 일이 잦아 하루 여러 번 트리거한다. 07:00 기준 2시간 이내에 일찍 시작한 실행은 07:00까지 기다린다. 그 외에는 그날 첫 실행이 시작 시각과 관계없이 생성·발송하고, 이후 실행은 아무것도 하지 않는다. `serve` worker의 09:00 자동 복구 마감은 `once`에 적용하지 않는다.
+- **저장:** SQLite 파일(`var/briefing.sqlite3`)은 실행 사이에 Actions 캐시로 보존한다. `concurrency` 그룹이 두 실행의 동시 진행을 막는다.
+- **한계:** 2026-11-07~09에 예약 실행이 4~9시간 늦게 시작된 사례가 있어 메일이 오후에 도착할 수 있다. 캐시는 7일 동안 쓰이지 않으면 삭제되고, 그러면 발송·기사 이력이 사라진다. 공개 저장소에서 60일 동안 활동이 없으면 예약 워크플로가 비활성화되므로 GitHub 알림 메일을 받으면 Actions 탭에서 다시 켠다.
+
+## Docker·Render를 쓰지 않는 이유
+
+처음에는 Docker 컨테이너로 `briefing serve`를 Render 상시 worker에서 돌리고 SQLite를 `/data` 영구 디스크에 두는 방식으로 준비했다. 이 구성은 유료 worker와 유료 디스크가 필요하다. 목표는 개인 컴퓨터를 꺼 둔 상태에서도 메일을 받되 호스팅 비용을 쓰지 않는 것이므로, 2026-11-07 GitHub Actions 예약 실행으로 옮겼다. 지금 고정 운영비는 없고 OpenAI 사용량만 비용으로 남는다.
+
+대신 정시성을 일부 포기했다. Render worker는 30초마다 시각을 확인해 08:00 근처에 발송하지만 GitHub 예약 실행은 몇 시간씩 늦을 수 있다. 2026-11-09 외부 cron 서비스(cron-job.org 등)로 `workflow_dispatch`를 호출하는 방법 대신 `once`의 09:00 마감을 없애는 쪽을 택했다. 외부 서비스를 하나 더 두는 것보다 늦게라도 오는 메일이 낫다고 판단했기 때문이다. 영구 디스크는 Actions 캐시로 대체했으며 위의 7일 삭제 한계가 있다.
+
+`Dockerfile`, `.dockerignore`, `render.yaml`은 지우지 않고 남겨 두었다. 정시 도착이 비용보다 중요해지면 다시 쓸 수 있는 유료 대안이며, 현재 워크플로는 사용하지 않는다. 아래 Render 절은 그 대안의 준비 기록이다.
+
+## Render 준비 (보류된 유료 대안)
 
 `Dockerfile`, `uv.lock`, `render.yaml`을 준비했다. 단일 worker와 `/data` 영구 디스크를 사용한다. 배포 시 OpenAI·LangSmith·Resend 키와 검증된 `MAIL_FROM`을 Render secret으로 설정한다. `render.yaml`은 유료 worker·디스크 구성이며 실제 리소스는 아직 생성하지 않았다.
 
