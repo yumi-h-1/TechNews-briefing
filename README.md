@@ -1,8 +1,19 @@
 # TechNews Briefing
 
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)
+![OpenAI](https://img.shields.io/badge/GPT--4.1_mini-412991?style=flat&logo=openai&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-1C3C3C?style=flat&logo=langchain&logoColor=white)
+![LangSmith](https://img.shields.io/badge/LangSmith-1C3C3C?style=flat&logo=langchain&logoColor=white)
+![BeautifulSoup](https://img.shields.io/badge/BeautifulSoup4-43B02A?style=flat&logo=python&logoColor=white)
+![HTTPX](https://img.shields.io/badge/HTTPX-0A6FB5?style=flat&logo=python&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white)
+![Resend](https://img.shields.io/badge/Resend-000000?style=flat&logo=resend&logoColor=white)
+![uv](https://img.shields.io/badge/uv-DE5FE9?style=flat&logo=uv&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat&logo=githubactions&logoColor=white)
+
 TechNews Briefing is a personal email digest of IT and AI developments in the United Kingdom, the United States, and South Korea. It brings regional news into one morning briefing, with English summaries for the UK and US and Korean summaries from Korean-language publishers for South Korea.
 
-The system is designed to run on a server and target **08:00 Europe/London every day**, including weekends, without requiring a personal computer to stay on.
+It runs on **GitHub Actions** and targets **08:00 Europe/London every day**, including weekends, so no server or personal computer needs to stay on.
 
 ## What the briefing contains
 
@@ -25,11 +36,11 @@ AI review and evidence checks reduce errors but do not guarantee factual accurac
 
 ## Schedule and reliability
 
-By default, generation starts at **07:30**, with scheduled sending beginning at **08:00** in the `Europe/London` time zone, including British Summer Time changes. If preparation runs late, the worker can send once the edition is ready, until the automatic recovery window closes at 09:00. Exact inbox arrival at 08:00 is not guaranteed.
+The workflow sets `PREPARATION_MINUTES=60`, so generation starts at **07:00** and sending begins no earlier than **08:00** in the `Europe/London` time zone, including British Summer Time changes. Several cron triggers start the workflow each day because GitHub often starts scheduled jobs late. A run that starts up to two hours before 07:00 waits for it; otherwise the first run of the day prepares and sends that day's edition however late it starts, and later runs do nothing. Exact inbox arrival at 08:00 is not guaranteed.
 
-Prepared content is reused for delivery retries. Persistent edition records, a worker lock, atomic send-state changes, and a stable delivery idempotency key help prevent duplicate sends. Provider acceptance is tracked separately from confirmed inbox delivery.
+Prepared content is reused for delivery retries. Persistent edition records, a worker lock, atomic send-state changes, and a stable delivery idempotency key help prevent duplicate sends. A workflow concurrency group stops two runs from overlapping. Provider acceptance is tracked separately from confirmed inbox delivery.
 
-The application is currently restricted to one configured recipient. It uses a single worker and a persistent SQLite database.
+The application is currently restricted to one configured recipient. Its SQLite database is carried between runs in the GitHub Actions cache.
 
 ## Technology
 
@@ -41,7 +52,8 @@ The application is currently restricted to one configured recipient. It uses a s
 | LangSmith | Optional graph and model tracing |
 | SQLite | Collection reports, prepared editions, and delivery history |
 | Resend | HTML and plain-text email delivery |
-| Docker / Render | Containerized server deployment configuration |
+| uv | Locked dependency installation and command execution |
+| GitHub Actions | Daily scheduled runs and secret management |
 
 Configured feeds include BBC, The Guardian, CNBC, NPR, Yonhap, Hankyoreh, and SBS. Their URLs and filtering settings are maintained in [`sources.json`](sources.json).
 
@@ -54,9 +66,9 @@ uv sync --locked
 cp .env.example .env
 ```
 
-`.python-version` selects Python 3.13 for local development, matching the Docker image. `uv sync` creates the project’s `.venv` and installs the locked application and development dependencies. There is no need to activate the environment manually.
+`.python-version` selects Python 3.13 for local development. `uv sync` creates the project’s `.venv` and installs the locked application and development dependencies. There is no need to activate the environment manually.
 
-If a `.env` file already exists, keep it and update its settings instead of overwriting it. Configure the following locally or through your hosting provider's secret settings:
+If a `.env` file already exists, keep it and update its settings instead of overwriting it. Configure the following locally, or as GitHub Actions secrets and variables (see [Deployment](#deployment)):
 
 | Setting | Purpose |
 |---|---|
@@ -68,10 +80,10 @@ If a `.env` file already exists, keep it and update its settings instead of over
 | `LANGSMITH_API_KEY` | Required when tracing is enabled |
 | `LANGSMITH_PROJECT` | Trace project name |
 | `DATA_DIR` | Persistent storage directory; defaults to `var` |
-| `PREPARATION_MINUTES` | Minutes before 08:00 to begin generation; defaults to `30` |
+| `PREPARATION_MINUTES` | Minutes before 08:00 to begin generation; defaults to `30` (the workflow uses `60`) |
 | `MAX_PER_COUNTRY` | Maximum selected stories per section; defaults to `3` |
 
-Keep credentials out of version control. `.env` is excluded from Git and Docker build context.
+Keep credentials out of version control. `.env` is excluded from Git.
 
 ### Commands
 
@@ -82,7 +94,7 @@ uv run --locked python -m briefing demo     # Generate an offline preview with f
 uv run --locked python -m briefing preview  # Generate a real-news AI preview without sending
 uv run --locked python -m briefing prepare  # Generate and save today's edition without sending
 uv run --locked python -m briefing status   # Inspect today's delivery state
-uv run --locked python -m briefing serve    # Run daily preparation and scheduled delivery
+uv run --locked python -m briefing serve    # Run as an always-on worker (not used by GitHub Actions)
 uv run --locked python -m briefing once     # One cron attempt: send today's edition (not before 08:00), once per day
 ```
 
@@ -100,30 +112,37 @@ uv add --dev package-name    # Add a development dependency
 uv lock --upgrade-package package-name  # Update a specific dependency
 ```
 
-Commit both `pyproject.toml` and `uv.lock` when dependencies change. Normal setup and execution use `--locked` to detect an outdated lockfile. Docker installs only application dependencies with `uv sync --locked --no-dev`.
+Commit both `pyproject.toml` and `uv.lock` when dependencies change. Normal setup and execution use `--locked` to detect an outdated lockfile. The workflow installs only application dependencies with `uv sync --locked --no-dev`.
 
-## Deployment and testing
+## Deployment
 
-### Free: GitHub Actions (recommended for personal use)
+[`.github/workflows/daily-briefing.yml`](.github/workflows/daily-briefing.yml) runs `briefing once` every morning on GitHub's servers. It is free for public repositories.
 
-[`.github/workflows/daily-briefing.yml`](.github/workflows/daily-briefing.yml) runs `briefing once` every morning on GitHub's servers, so no computer needs to stay on. It is free for public repositories.
-
-1. In the repository on GitHub, open **Settings → Secrets and variables → Actions** and add the secrets `OPENAI_API_KEY`, `RESEND_API_KEY`, and `MAIL_FROM` (plus `LANGSMITH_API_KEY` if you set the variable `LANGSMITH_TRACING` to `true`).
+1. In the repository on GitHub, open **Settings → Secrets and variables → Actions** and add the secrets `OPENAI_API_KEY`, `RESEND_API_KEY`, and `MAIL_FROM`. Add `LANGSMITH_API_KEY` as well if you set the variable `LANGSMITH_TRACING` to `true`. The variables `OPENAI_MODEL` and `LANGSMITH_PROJECT` are optional.
 2. Open **Actions → Daily briefing → Run workflow** and run `doctor`; the `missing` list should be empty.
-3. From then on several triggers start the workflow each day. A run that starts before 07:00 London time waits for it; the first run of the day prepares that day's edition and sends it, no earlier than 08:00 but with no late cut-off. Later runs that day do nothing.
+3. From then on the scheduled triggers run the workflow each day. To send today's edition by hand, run the workflow with `once`; it does nothing if today's edition was already sent.
 
-Limitations: GitHub often starts scheduled jobs hours late (delays of 4–9 hours were observed), so the email may arrive in the afternoon rather than at 08:00. For punctual delivery, have an external cron service call the workflow's `workflow_dispatch` API with `command: once` at about 07:05 London time. The SQLite state is kept in the Actions cache, which GitHub deletes after 7 days without use. GitHub disables scheduled workflows in public repositories after 60 days without repository activity; re-enable it from the Actions tab when GitHub emails you.
+Limitations:
 
-### Paid: Render worker
+- GitHub often starts scheduled jobs hours late (delays of 4–9 hours were observed), so the email may arrive in the afternoon rather than at 08:00. For punctual delivery, have an external cron service call the workflow's `workflow_dispatch` API with `command: once` at about 07:05 London time.
+- The SQLite state is kept in the Actions cache, which GitHub deletes after 7 days without use.
+- GitHub disables scheduled workflows in public repositories after 60 days without repository activity; re-enable it from the Actions tab when GitHub emails you.
 
-[`render.yaml`](render.yaml) defines a Docker worker with a persistent `/data` disk. Deployment requires service credentials, an authorized sender, and a paid hosting configuration. Keep one worker and preserve the database across restarts and deployments.
+### Why GitHub Actions instead of Docker on Render
+
+The project was first prepared as a Docker container running `briefing serve` as an always-on Render worker, with a persistent disk for SQLite. That setup needs a paid worker and a paid disk. The goal is for the email to arrive with no personal computer switched on, at no hosting cost, so in November 2026 deployment moved to a daily GitHub Actions workflow. OpenAI usage is now the only running cost.
+
+The move trades punctuality for cost. A Render worker checks the clock every 30 seconds and sends close to 08:00. GitHub's scheduled jobs can start hours late, so the 09:00 automatic cut-off was dropped for `briefing once`: a late email is preferred over adding another external service. The persistent disk is replaced by the Actions cache, which has the 7-day eviction noted above.
+
+[`Dockerfile`](Dockerfile), [`.dockerignore`](.dockerignore), and [`render.yaml`](render.yaml) are kept, unused, as a paid alternative for when on-time delivery matters more than cost. The workflow does not use them. To switch back, follow the Render section of the [operations guide](docs/06-operations.md).
+
+## Testing
 
 ```sh
 uv sync --locked
 uv run --locked pytest -q
-docker build -t technews-briefing:local .
 ```
 
-Collection, editorial branching, scheduling, delivery-state handling, and recovery have automated tests. Local Docker build and offline startup checks have passed. Live AI quality, LangSmith connectivity, inbox delivery, and unattended server operation still require end-to-end verification. Bounded calls and retries do not enforce a monthly spending cap.
+Collection, editorial branching, scheduling, delivery-state handling, and recovery have automated tests. Live AI quality, LangSmith connectivity, and inbox delivery still require end-to-end verification. Bounded calls and retries do not enforce a monthly spending cap.
 
 See the [operations guide](docs/06-operations.md) (Korean) for delivery reconciliation, configuration details, and deployment verification.
