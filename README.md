@@ -83,7 +83,7 @@ uv run --locked python -m briefing preview  # Generate a real-news AI preview wi
 uv run --locked python -m briefing prepare  # Generate and save today's edition without sending
 uv run --locked python -m briefing status   # Inspect today's delivery state
 uv run --locked python -m briefing serve    # Run daily preparation and scheduled delivery
-uv run --locked python -m briefing once     # One scheduled attempt: prepare, wait until 08:00, send (for cron)
+uv run --locked python -m briefing once     # One cron attempt: send today's edition (not before 08:00), once per day
 ```
 
 `uv run --locked python -m briefing send` immediately submits an already prepared edition to the configured recipient; this manual command does not wait until 08:00.
@@ -110,9 +110,9 @@ Commit both `pyproject.toml` and `uv.lock` when dependencies change. Normal setu
 
 1. In the repository on GitHub, open **Settings → Secrets and variables → Actions** and add the secrets `OPENAI_API_KEY`, `RESEND_API_KEY`, and `MAIL_FROM` (plus `LANGSMITH_API_KEY` if you set the variable `LANGSMITH_TRACING` to `true`).
 2. Open **Actions → Daily briefing → Run workflow** and run `doctor`; the `missing` list should be empty.
-3. From then on several morning triggers start the workflow. A run that starts early waits for 07:00 London time, prepares the edition, waits until 08:00, and sends it. Later runs never resend an accepted edition. A run that starts after 09:00 without that day's edition having been sent fails, so GitHub emails a failure notice.
+3. From then on several triggers start the workflow each day. A run that starts before 07:00 London time waits for it; the first run of the day prepares that day's edition and sends it, no earlier than 08:00 but with no late cut-off. Later runs that day do nothing.
 
-Limitations: GitHub may start scheduled jobs late (hours late has been observed) or skip one, so arrival can be later than 08:00 and nothing is sent after 09:00. For punctual starts, have a free external cron service call the workflow's `workflow_dispatch` API with `command: once` at about 07:05 London time. The SQLite state is kept in the Actions cache, which GitHub deletes after 7 days without use. GitHub disables scheduled workflows in public repositories after 60 days without repository activity; re-enable it from the Actions tab when GitHub emails you.
+Limitations: GitHub often starts scheduled jobs hours late (delays of 4–9 hours were observed), so the email may arrive in the afternoon rather than at 08:00. For punctual delivery, have an external cron service call the workflow's `workflow_dispatch` API with `command: once` at about 07:05 London time. The SQLite state is kept in the Actions cache, which GitHub deletes after 7 days without use. GitHub disables scheduled workflows in public repositories after 60 days without repository activity; re-enable it from the Actions tab when GitHub emails you.
 
 ### Paid: Render worker
 

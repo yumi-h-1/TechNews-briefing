@@ -204,12 +204,16 @@ def test_run_once_early_start_waits_for_window(tmp_path, monkeypatch):
     sending.assert_called_once()
 
 
-def test_run_once_late_start_reports_missed(tmp_path, monkeypatch):
-    generation = Mock()
+def test_run_once_late_start_still_sends_that_day(tmp_path, monkeypatch):
+    generation = Mock(return_value=payload())
+    sending = Mock(return_value="provider-123")
     monkeypatch.setattr("briefing.app.generate", generation)
-    late = NOW.replace(hour=12, minute=16)  # 13:16 London, after the window
-    assert run_once(Settings(tmp_path, preparation_minutes=60), clock=lambda: late, sleep=Mock()) == "missed"
-    generation.assert_not_called()
+    monkeypatch.setattr("briefing.mail.send_email", sending)
+    settings = Settings(tmp_path, preparation_minutes=60)
+    late = NOW.replace(hour=15, minute=36)  # 16:36 London, hours after 08:00
+    assert run_once(settings, clock=lambda: late, sleep=Mock()) == "accepted"
+    assert run_once(settings, clock=lambda: late.replace(hour=22), sleep=Mock()) == "accepted"
+    assert generation.call_count == 1 and sending.call_count == 1
 
 
 def test_run_once_late_start_after_sent_edition_is_fine(tmp_path, monkeypatch):

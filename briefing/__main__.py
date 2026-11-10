@@ -21,7 +21,7 @@ def main():
     preview_parser = sub.add_parser("preview", help="Real-news AI preview; nothing is recorded as sent")
     preview_parser.add_argument("--send", action="store_true",
                                 help="Also email it as a [TEST] message (separate from the daily edition)")
-    sub.add_parser("once", help="One scheduled attempt (for cron): prepare, wait until 08:00, send")
+    sub.add_parser("once", help="One cron attempt: prepare and send today's edition (not before 08:00), once per day")
     recovery = sub.add_parser("recover", help="Reconcile provider logs; never automatically resends")
     recovery.add_argument("--day", required=True)
     recovery.add_argument("--action", choices=["accepted", "not-accepted"], required=True)
@@ -94,9 +94,7 @@ def main():
     elif args.command == "once":
         result = run_once(settings)
         print(result)
-        if result == "missed":
-            print("Started after the 07:00-09:00 London window and today's edition was not sent")
-        # Fail the run (so GitHub notifies) unless it sent or was simply outside the send window.
+        # Fail the run (so GitHub notifies) unless today's edition was sent or it is too early.
         if result not in {"accepted", "outside_window"}:
             raise SystemExit(1)
 

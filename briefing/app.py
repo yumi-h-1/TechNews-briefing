@@ -133,11 +133,12 @@ def deliver(settings, now=None):
         return "accepted"
 
 
-def tick(settings, now, clock=None):
+def tick(settings, now, clock=None, late_limit=timedelta(hours=1)):
+    """late_limit: how long after 08:00 an edition may still be sent; None means any time that day."""
     day, prepare_at, send_at = schedule(now, settings)
     local = now.astimezone(ZoneInfo(settings.timezone))
-    # Do not silently send a late edition after this provisional one-hour window.
-    if not prepare_at <= local < send_at + timedelta(hours=1):
+    deadline = send_at + late_limit if late_limit is not None else None
+    if local < prepare_at or (deadline and local >= deadline):
         return "outside_window"
     store = Store(settings.data_dir)
     row = store.get(day)
@@ -149,7 +150,7 @@ def tick(settings, now, clock=None):
     current = max(now, (clock or (lambda: datetime.now(timezone.utc)))())
     if schedule(current, settings)[0] != day:
         return "expired"
-    if current.astimezone(ZoneInfo(settings.timezone)) >= send_at + timedelta(hours=1):
+    if deadline and current.astimezone(ZoneInfo(settings.timezone)) >= deadline:
         return "expired"
     if current >= send_at:
         return deliver(settings, current)
@@ -160,28 +161,26 @@ EARLY_START_LIMIT = timedelta(hours=2)
 
 
 def run_once(settings, clock=None, sleep=time.sleep):
-    """One scheduled attempt for cron runners: prepare if needed, wait until 08:00, then send.
+    """One scheduled attempt for cron runners such as GitHub Actions, whose start can be hours late.
 
-    A start up to two hours early waits for the preparation window. A start after the window
-    reports "missed" unless today's edition was already sent, so a late cron is not silent.
+    A start up to two hours before the preparation window waits for it; otherwise the edition is
+    prepared and sent no earlier than 08:00 London, however late in the day the run starts.
+    Each London day's edition is sent at most once.
     """
     clock = clock or (lambda: datetime.now(timezone.utc))
     now = clock()
-    day, prepare_at, send_at = schedule(now, settings)
+    prepare_at = schedule(now, settings)[1]
     if timedelta(0) < prepare_at - now <= EARLY_START_LIMIT:
         wait = (prepare_at - now).total_seconds()
         LOG.info("Started early; waiting %.0f seconds for the preparation window", wait)
         sleep(wait)
-    result = tick(settings, clock(), clock)
+    result = tick(settings, clock(), clock, late_limit=None)
     while result == "prepared":
         send_at = schedule(clock(), settings)[2]
         wait = max(1.0, (send_at - clock()).total_seconds())
         LOG.info("Edition prepared; waiting %.0f seconds until send time", wait)
         sleep(wait)
-        result = tick(settings, clock(), clock)
-    if result == "outside_window" and clock() >= send_at + timedelta(hours=1):
-        row = Store(settings.data_dir).get(day)
-        result = row["status"] if row else "missed"
+        result = tick(settings, clock(), clock, late_limit=None)
     return result
 
 

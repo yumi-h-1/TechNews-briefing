@@ -1,20 +1,22 @@
 name: Daily briefing
 
 # Free alternative to the always-on Render worker: GitHub starts a short job each morning.
-# Cron is UTC and GitHub may start scheduled jobs late, so several triggers cover
-# both GMT and BST. `briefing once` waits when started up to two hours early, fails
-# (red run) when it starts after 09:00 London without having sent that day, and never
-# sends the same day's edition twice. External triggers can call workflow_dispatch.
+# Cron is UTC and GitHub often starts scheduled jobs hours late, so several triggers
+# spread over the day. `briefing once` waits when started up to two hours before 07:00
+# London; otherwise the first run of the London day prepares and sends that day's
+# edition (never before 08:00), however late it starts. Later runs that day do nothing.
 on:
   schedule:
     - cron: "17 5 * * *"   # 05:17 GMT / 06:17 BST — waits for 07:00 London
     - cron: "17 6 * * *"   # 06:17 GMT / 07:17 BST
-    - cron: "17 7 * * *"   # 07:17 GMT / 08:17 BST — backup
-    - cron: "47 7 * * *"   # 07:47 GMT / 08:47 BST — backup
+    - cron: "17 7 * * *"   # 07:17 GMT / 08:17 BST
+    - cron: "47 7 * * *"   # 07:47 GMT / 08:47 BST
+    - cron: "17 11 * * *"  # midday backup
+    - cron: "17 15 * * *"  # afternoon backup
   workflow_dispatch:
     inputs:
       command:
-        description: "doctor = check secrets only; once = run now (sends only between 07:00 and 09:00 London)"
+        description: "doctor = check secrets only; once = send today's edition now if not yet sent (from 07:00 London)"
         type: choice
         options: [doctor, once]
         default: doctor
